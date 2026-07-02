@@ -883,6 +883,18 @@
       });
     }
 
+    // ===== Helper: parse response safely =====
+    async function parseResponse(res) {
+      const text = await res.text();
+      if (!text) return null; // empty body
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        // not JSON
+        return { __raw_text: text };
+      }
+    }
+
     async function generate(promptOverride) {
       const prompt = promptOverride || promptInput.value.trim();
       if (!prompt) {
@@ -907,13 +919,16 @@
           body: JSON.stringify({ prompt }),
         });
 
-        const data = await res.json();
+        // 先读取为 text，再尝试解析为 JSON，避免 res.json() 在空响应或非 JSON 时抛错
+        const data = await parseResponse(res);
 
         if (!res.ok) {
-          throw new Error(data.detail || data.error || '生成失败');
+          // 提取错误信息：优先 data.error/data.detail，其次 raw text
+          const msg = (data && (data.error || data.detail)) || (data && data.__raw_text) || `服务器返回错误 (${res.status})`;
+          throw new Error(msg);
         }
 
-        if (!data.images || data.images.length === 0) {
+        if (!data || !data.images || data.images.length === 0) {
           throw new Error('未获取到图片');
         }
 
